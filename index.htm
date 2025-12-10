@@ -532,7 +532,21 @@
             font-size: 14px;
             line-height: 1.6;
             color: #0f0;
-            min-height: 60px;
+            height: 100px; /* Fixed height */
+            overflow-y: auto; /* Scrollable */
+            scrollbar-width: thin;
+            scrollbar-color: #0f0 #001100;
+        }
+
+        .message-text::-webkit-scrollbar {
+            width: 6px;
+        }
+        .message-text::-webkit-scrollbar-track {
+            background: #001100;
+        }
+        .message-text::-webkit-scrollbar-thumb {
+            background-color: #0f0;
+            border-radius: 3px;
         }
 
         .typewriter {
@@ -597,6 +611,15 @@
         <p>Please access via a <strong>Desktop Terminal</strong> to benefit from the full experience.</p>
     </div>
 
+    <!-- Start Screen -->
+    <div id="start-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 5, 0, 0.95); z-index: 9000; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer;">
+        <h1 style="font-size: 40px; color: #0f0; text-shadow: 0 0 20px #0f0; animation: blink 1s infinite;">// SYSTEM READY</h1>
+        <p style="color: #fff; font-size: 18px; margin-top: 20px;">[ CLICK TO INITIALIZE INTERFACE ]</p>
+    </div>
+    <style>
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+
     <!-- Mission Briefing -->
     <div id="mission-briefing">
         <div class="briefing-header">
@@ -638,7 +661,7 @@
                     <span>SCORE:</span> <span id="score-val" class="resource-val">0</span>
                 </div>
                 <div class="resource-row">
-                    <span>CARBON:</span> <span id="carbon-val" class="resource-val" style="color: #ffff00;">0</span>
+                    <span>CARBON:</span> <span id="carbon-val" class="resource-val" style="color: #ffff00;">10</span>
                 </div>
             </div>
         </div>
@@ -849,6 +872,7 @@
             bgMusic: null,
             laserSound: null,
             explosionSound: null,
+            typingSound: null,
             initialized: false
         };
 
@@ -862,11 +886,22 @@
             
             // Laser Sound
             AUDIO.laserSound = new Audio('./laser.mp3');
-            AUDIO.laserSound.volume = 0.2;  // Reduced from 0.5
+            AUDIO.laserSound.volume = 0.2;
             
             // Explosion Sound
             AUDIO.explosionSound = new Audio('./explosion.mp3');
-            AUDIO.explosionSound.volume = 0.3;  // Reduced from 0.6
+            AUDIO.explosionSound.volume = 0.3;
+
+            // Typing Sound
+            AUDIO.typingSound = new Audio('./text-writting.mp3');
+            AUDIO.typingSound.loop = true;
+            AUDIO.typingSound.volume = 0.5;
+            
+            // Manual loop fallback
+            AUDIO.typingSound.addEventListener('ended', function() {
+                this.currentTime = 0;
+                this.play().catch(e => {});
+            }, false);
             
             AUDIO.initialized = true;
             
@@ -1594,6 +1629,12 @@
             textElement.textContent = "";
             briefing.classList.add('active');
             
+            // Start Audio
+            if (STATE.audioEnabled && AUDIO.typingSound) {
+                AUDIO.typingSound.currentTime = 0;
+                AUDIO.typingSound.play().catch(e => console.log("Audio play failed:", e));
+            }
+            
             // Custom typewriter for dynamic messages
             let index = 0;
             textElement.classList.add('typewriter');
@@ -1601,10 +1642,12 @@
             const typeInterval = setInterval(() => {
                 if (index < message.length) {
                     textElement.textContent = message.substring(0, index + 1);
+                    textElement.scrollTop = textElement.scrollHeight; // Auto-scroll
                     index++;
                 } else {
                     clearInterval(typeInterval);
                     textElement.classList.remove('typewriter');
+                    if (AUDIO.typingSound) AUDIO.typingSound.pause();
                     setTimeout(() => closeBriefing(), 8000);
                 }
             }, 30);
@@ -1679,12 +1722,12 @@
             }
 
             // Cargo Ship Logic (Round 5+)
-            if (STATE.round >= 5) {
-                setTimeout(() => {
-                    showTransmission("WARNING: CARGO CLASS HOSTILE DETECTED.");
-                    spawnEnemy('cargo');
-                }, 10000);
-            }
+            // if (STATE.round >= 5) {
+            //     setTimeout(() => {
+            //         showTransmission("WARNING: CARGO CLASS HOSTILE DETECTED.");
+            //         spawnEnemy('cargo');
+            //     }, 10000);
+            // }
         }
 
         function gameOver() {
@@ -2236,15 +2279,23 @@
             const fullText = briefingMessages.join(' ');
             let index = 0;
             
+            // Start Audio
+            if (STATE.audioEnabled && AUDIO.typingSound) {
+                AUDIO.typingSound.currentTime = 0;
+                AUDIO.typingSound.play().catch(e => console.log("Audio play failed:", e));
+            }
+
             textElement.classList.add('typewriter');
             
             const typeInterval = setInterval(() => {
                 if (index < fullText.length) {
                     textElement.textContent = fullText.substring(0, index + 1);
+                    textElement.scrollTop = textElement.scrollHeight; // Auto-scroll
                     index++;
                 } else {
                     clearInterval(typeInterval);
                     textElement.classList.remove('typewriter');
+                    if (AUDIO.typingSound) AUDIO.typingSound.pause();
                     
                     // Auto-close after 15 seconds
                     setTimeout(() => {
@@ -2255,6 +2306,7 @@
         }
 
         function closeBriefing() {
+            if (AUDIO.typingSound) AUDIO.typingSound.pause();
             const briefing = document.getElementById('mission-briefing');
             briefing.style.opacity = '0';
             briefing.style.transform = 'translateY(20px)';
@@ -2290,15 +2342,27 @@
                 document.getElementById('mobile-warning').style.display = 'flex';
                 STATE.gameActive = false; // Stop game logic
             } else {
-                showBriefing();
-                initAudio();
-                
-                // TEST: Spawn Cargo Ship immediately (Remove this line to disable test)
-                setTimeout(() => {
-                    console.log("Spawning Test Cargo Ship");
-                    spawnEnemy('cargo');
-                }, 2000);
+                // Wait for user interaction via Start Screen
             }
+        });
+
+        // Start Game Sequence
+        document.getElementById('start-screen').addEventListener('click', () => {
+            const screen = document.getElementById('start-screen');
+            screen.style.opacity = '0';
+            setTimeout(() => screen.style.display = 'none', 500);
+            
+            initAudio();
+            showBriefing();
+            
+            // Ensure UI matches State
+            document.getElementById('carbon-val').innerText = STATE.carbon;
+
+            // TEST: Spawn Cargo Ship immediately (Remove this line to disable test)
+            setTimeout(() => {
+                console.log("Spawning Test Cargo Ship");
+                spawnEnemy('cargo');
+            }, 2000);
         });
 
         // Initialize and start audio on first user interaction
